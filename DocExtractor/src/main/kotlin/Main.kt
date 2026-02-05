@@ -1,7 +1,10 @@
 import androidx.compose.desktop.ui.tooling.preview.Preview
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.Button
+import androidx.compose.material.DropdownMenu
+import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.MaterialTheme
 import androidx.compose.material.Surface
 import androidx.compose.material.Text
@@ -19,7 +22,6 @@ import java.io.File
 import javax.swing.JFileChooser
 import kotlinx.cli.ArgParser
 import kotlinx.cli.ArgType
-import kotlinx.cli.default
 
 fun main(args: Array<String>) {
     if (args.isEmpty()) {
@@ -34,19 +36,45 @@ fun main(args: Array<String>) {
         val parser = ArgParser("SFT-Pro-CLI")
         val input by parser.option(ArgType.String, shortName = "i", fullName = "input", description = "Input document file (PDF, DOCX)")
         val output by parser.option(ArgType.String, shortName = "o", fullName = "output", description = "Output JSONL file path")
-        val model by parser.option(ArgType.String, shortName = "m", fullName = "model", description = "Ollama model to use").default("llama3:latest")
+        var model by parser.option(ArgType.String, shortName = "m", fullName = "model", description = "Ollama model to use")
         parser.parse(args)
 
         val inputFile = input?.let { File(it) }
         if (inputFile == null || !inputFile.exists()) {
-            println("Error: Input file not specified or does not exist.")
+            println("Error: Input file '-i' not specified or does not exist.")
             return
+        }
+
+        if (model == null) {
+            val availableModels = OllamaModelScanner.getAvailableModels()
+            when {
+                availableModels.isEmpty() -> {
+                    println("Error: No Ollama models found. Please install a model first (e.g., 'ollama pull llama3').")
+                    return
+                }
+                availableModels.size == 1 -> {
+                    model = availableModels.first()
+                    println("Found one model, using '$model' by default.")
+                }
+                else -> {
+                    println("Multiple Ollama models found. Please select one:")
+                    availableModels.forEachIndexed { index, s -> println("  ${index + 1}: $s") }
+                    print("Enter number: ")
+                    val choice = readlnOrNull()?.toIntOrNull()
+                    if (choice != null && choice in 1..availableModels.size) {
+                        model = availableModels[choice - 1]
+                    } else {
+                        println("Invalid selection. Aborting.")
+                        return
+                    }
+                }
+            }
         }
 
         val outputFile = output?.let { File(it) } ?: File(inputFile.parent, "${inputFile.nameWithoutExtension}.jsonl")
 
         runBlocking {
-            processDocument(inputFile, outputFile, model)
+            processDocument(inputFile, outputFile, model!!)
         }
     }
 }
@@ -64,10 +92,12 @@ private suspend fun processDocument(inputFile: File, outputFile: File, model: St
 @Preview
 fun App() {
     var selectedFile by remember { mutableStateOf<File?>(null) }
-    var extractedText by remember { mutableStateOf("") }
     var jsonlOutput by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Ready") }
-    val model = "llama3:latest" // Or make this configurable in the UI
+    val availableModels by remember { mutableStateOf(OllamaModelScanner.getAvailableModels()) }
+    var selectedModel by remember { mutableStateOf(availableModels.firstOrNull() ?: "") }
+    var modelDropdownExpanded by remember { mutableStateOf(false) }
+
     val coroutineScope = rememberCoroutineScope()
 
     MaterialTheme {
@@ -81,10 +111,15 @@ fun App() {
 
                 Spacer(modifier = Modifier.height(10.dp))
 
+                if (availableModels.isEmpty()) {
+                    Text("Warning: No Ollama models found. Please install a model first.", color = Color.Red)
+                }
+
                 // File Selection
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(onClick = {
                         val fileChooser = JFileChooser()
+                        fileChooser.dialogTitle = "Select a Document"
                         fileChooser.fileFilter = javax.swing.filechooser.FileNameExtensionFilter("PDF & Word Documents", "pdf", "docx")
                         val result = fileChooser.showOpenDialog(null)
                         if (result == JFileChooser.APPROVE_OPTION) {
@@ -93,13 +128,14 @@ fun App() {
                                 selectedFile = file
                                 coroutineScope.launch {
                                     status = "Extracting text from ${file.name}..."
-                                    val text = DocumentProcessor.extractText(file)
-                                    extractedText = text // Keep for potential display/debugging
-
-                                    status = "Generating JSONL with Ollama model: $model..."
-                                    val generatedJsonl = OllamaApi.generateJsonl(text, model)
-                                    jsonlOutput = generatedJsonl
-                                    status = "Done"
+                                    try {
+                                        val text = DocumentProcessor.extractText(file)
+                                        status = "Generating JSONL with Ollama model: $selectedModel..."
+                                        jsonlOutput = OllamaApi.generateJsonl(text, selectedModel)
+                                        status = "Done"
+                                    } catch (e: Exception) {
+                                        status = "Error: ${e.message}"
+                                    }
                                 }
                             }
                         }
@@ -107,6 +143,29 @@ fun App() {
                         Text("Browse for Document")
                     }
                     Text(selectedFile?.name ?: "No file selected")
+                }
+
+                // Model Selection Dropdown
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Ollama Model:")
+                    Box {
+                        Button(onClick = { modelDropdownExpanded = true }, enabled = availableModels.isNotEmpty()) {
+                            Text(selectedModel.ifEmpty { "No models found" })
+                        }
+                        DropdownMenu(
+                            expanded = modelDropdownExpanded,
+                            onDismissRequest = { modelDropdownExpanded = false }
+                        ) {
+                            availableModels.forEach { model ->
+                                DropdownMenuItem(onClick = {
+                                    selectedModel = model
+                                    modelDropdownExpanded = false
+                                }) {
+                                    Text(model)
+                                }
+                            }
+                        }
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
@@ -123,7 +182,7 @@ fun App() {
                         .fillMaxWidth()
                         .weight(1f)
                         .border(1.dp, Color.Gray),
-                    readOnly = false // Allow editing for now
+                    readOnly = false
                 )
 
                 // Save Button
