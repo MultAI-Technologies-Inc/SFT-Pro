@@ -37,7 +37,7 @@ object OllamaApi {
 
     private const val OLLAMA_URL = "http://localhost:11434/api/generate"
 
-    suspend fun generateJsonl(text: String): String {
+    suspend fun generateJsonl(text: String, model: String): String {
         val prompt = """
 You are an expert in preparing data for Supervised Fine-Tuning (SFT).
 Your task is to convert the following document text into a JSONL format.
@@ -54,7 +54,7 @@ Produce the JSONL output now.
         """.trimIndent()
 
         val request = OllamaRequest(
-            model = "gpt-oss:20b", 
+            model = model,
             prompt = prompt
         )
 

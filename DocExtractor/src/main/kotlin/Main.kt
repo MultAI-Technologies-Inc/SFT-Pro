@@ -14,13 +14,50 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.io.File
 import javax.swing.JFileChooser
+import kotlinx.cli.ArgParser
+import kotlinx.cli.ArgType
+import kotlinx.cli.default
 
-fun main() = application {
-    Window(onCloseRequest = ::exitApplication, title = "SFT Pro Doc Extractor") {
-        App()
+fun main(args: Array<String>) {
+    if (args.isEmpty()) {
+        // GUI Mode
+        application {
+            Window(onCloseRequest = ::exitApplication, title = "SFT Pro Doc Extractor") {
+                App()
+            }
+        }
+    } else {
+        // CLI Mode
+        val parser = ArgParser("SFT-Pro-CLI")
+        val input by parser.option(ArgType.String, shortName = "i", fullName = "input", description = "Input document file (PDF, DOCX)")
+        val output by parser.option(ArgType.String, shortName = "o", fullName = "output", description = "Output JSONL file path")
+        val model by parser.option(ArgType.String, shortName = "m", fullName = "model", description = "Ollama model to use").default("llama3:latest")
+        parser.parse(args)
+
+        val inputFile = input?.let { File(it) }
+        if (inputFile == null || !inputFile.exists()) {
+            println("Error: Input file not specified or does not exist.")
+            return
+        }
+
+        val outputFile = output?.let { File(it) } ?: File(inputFile.parent, "${inputFile.nameWithoutExtension}.jsonl")
+
+        runBlocking {
+            processDocument(inputFile, outputFile, model)
+        }
     }
+}
+
+private suspend fun processDocument(inputFile: File, outputFile: File, model: String) {
+    println("Extracting text from ${inputFile.name}...")
+    val text = DocumentProcessor.extractText(inputFile)
+    println("Generating JSONL with Ollama model: $model...")
+    val generatedJsonl = OllamaApi.generateJsonl(text, model)
+    outputFile.writeText(generatedJsonl)
+    println("Successfully saved JSONL to ${outputFile.absolutePath}")
 }
 
 @Composable
@@ -30,6 +67,7 @@ fun App() {
     var extractedText by remember { mutableStateOf("") }
     var jsonlOutput by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Ready") }
+    val model = "llama3:latest" // Or make this configurable in the UI
     val coroutineScope = rememberCoroutineScope()
 
     MaterialTheme {
@@ -56,10 +94,10 @@ fun App() {
                                 coroutineScope.launch {
                                     status = "Extracting text from ${file.name}..."
                                     val text = DocumentProcessor.extractText(file)
-                                    extractedText = text
-                                    
-                                    status = "Generating JSONL with Ollama..."
-                                    val generatedJsonl = OllamaApi.generateJsonl(text)
+                                    extractedText = text // Keep for potential display/debugging
+
+                                    status = "Generating JSONL with Ollama model: $model..."
+                                    val generatedJsonl = OllamaApi.generateJsonl(text, model)
                                     jsonlOutput = generatedJsonl
                                     status = "Done"
                                 }
