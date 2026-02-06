@@ -8,22 +8,25 @@ The application can be run in two modes:
 
 ## Prerequisites
 
-Before using this tool, you must have Ollama installed and running on your system. You also need at least one model pulled.
+**Ollama must be installed and running on your system before using this tool.**  
+Ollama provides the local LLM backend that powers the JSONL generation. The app communicates with Ollama via its API, so Ollama needs to be active in the background.
 
-You can pull a model using the following command:
+### Step 1: Install Ollama
+Download and install Ollama from the official website:  
+[https://ollama.com/download](https://ollama.com/download)
+
+- Choose the installer for your operating system (Windows, macOS, or Linux).
+- Follow the on-screen instructions to complete installation.
+- After installation, Ollama will run automatically in the background (you’ll see its icon in the system tray on Windows/macOS).
+
+### Step 2: Pull at Least One Model
+Open a terminal (Command Prompt/PowerShell on Windows, Terminal on macOS/Linux) and run:
+
 ```shell
 ollama pull llama3
 ```
 
 ## Installation (Windows)
-
-First, build the distributable application package.
-
-```shell
-.\gradlew.bat :composeApp:packageExe
-```
-
-This command will create a standalone `.exe` installer.
 
 1.  **Run the Installer**: Navigate to `composeApp\build\compose\binaries\main\exe` and run the installer, `sftpro-1.0.0.exe`. Follow the on-screen instructions. By default, it will install to `C:\Users\<YourUser>\AppData\Local\sftpro`.
 
