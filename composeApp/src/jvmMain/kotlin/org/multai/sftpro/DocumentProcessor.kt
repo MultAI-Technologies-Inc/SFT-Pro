@@ -1,3 +1,5 @@
+package org.multai.sftpro
+
 import org.apache.pdfbox.pdmodel.PDDocument
 import org.apache.pdfbox.text.PDFTextStripper
 import org.apache.poi.xwpf.extractor.XWPFWordExtractor
@@ -7,7 +9,7 @@ import java.io.FileInputStream
 
 object DocumentProcessor {
 
-    private const val TEXT_LIMIT = 16000 // Character limit
+    private const val TEXT_LIMIT = 16000
 
     fun extractText(file: File): String {
         val text = when (file.extension.lowercase()) {
@@ -15,11 +17,7 @@ object DocumentProcessor {
             "docx" -> extractTextFromDocx(file)
             else -> "Unsupported file type: ${file.extension}"
         }
-        return if (text.length > TEXT_LIMIT) {
-            text.substring(0, TEXT_LIMIT)
-        } else {
-            text
-        }
+        return text.take(TEXT_LIMIT)  // Cleaner than substring
     }
 
     private fun extractTextFromPdf(file: File): String {
@@ -28,7 +26,6 @@ object DocumentProcessor {
                 PDFTextStripper().getText(document)
             }
         } catch (e: Exception) {
-            e.printStackTrace()
             "Error extracting text from PDF: ${e.message}"
         }
     }
@@ -41,7 +38,6 @@ object DocumentProcessor {
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
             "Error extracting text from DOCX: ${e.message}"
         }
     }
